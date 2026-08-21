@@ -28,6 +28,7 @@ Ngoài ra script còn:
 .
 ├── build.sh                    # sinh autoinstall/user-data từ 2 file nguồn
 ├── serve.sh                    # host file autoinstall qua HTTP cho trình cài tải về
+├── set-password.sh             # đặt sẵn tài khoản + mật khẩu, khỏi phải nhập lúc cài
 ├── scripts/
 │   └── post-install.sh         # NGUỒN DUY NHẤT của toàn bộ logic cài đặt
 └── autoinstall/
@@ -161,18 +162,36 @@ Mở `autoinstall/user-data.tmpl`:
 | `timezone` | `Asia/Ho_Chi_Minh` | |
 | `updates` | `all` | Cập nhật hệ thống ngay trong lúc cài |
 
-### Muốn cài hoàn toàn không bấm phím nào
-
-Trong `user-data.tmpl`: xoá khối `interactive-sections`, bỏ comment khối `storage:` và `identity:`, sửa đường dẫn ổ đĩa và hash mật khẩu — rồi chạy lại `./build.sh`.
-
-> ⚠️ **`storage.layout.name: direct` sẽ XOÁ SẠCH ổ đĩa được chọn, không hỏi lại.**
-> Kiểm tra kỹ `path` bằng `lsblk` trước khi dùng. Đây là lý do mặc định để chế độ chọn tay.
-
-Tạo hash mật khẩu:
+### Đặt sẵn tài khoản, khỏi nhập lúc cài
 
 ```bash
-mkpasswd --method=SHA-512 --rounds=4096
+./set-password.sh
 ```
+
+Script hỏi tên đăng nhập, tên máy và mật khẩu (nhập ẩn), băm mật khẩu thành chuỗi hash SHA-512 rồi ghi vào cấu hình và build lại. **Mật khẩu dạng thô không bao giờ được ghi ra đĩa.**
+
+Quay lại chế độ nhập tay:
+
+```bash
+./set-password.sh --reset
+```
+
+> ⚠️ Sau khi chạy, file autoinstall **chứa hash mật khẩu**. Hash SHA-512 vẫn bẻ được bằng tấn công từ điển nếu mật khẩu dễ đoán.
+> Đẩy lên repo public = coi như mật khẩu đã lộ, và Git giữ lịch sử nên xoá sau cũng không sạch. Muốn an toàn thì để repo private và dùng `./serve.sh` trong mạng LAN.
+
+### Còn phần ổ đĩa
+
+`storage` cố ý luôn ở chế độ chọn tay, kể cả sau khi chạy `set-password.sh`. Muốn tự động luôn thì tự thêm vào `autoinstall/user-data.tmpl`:
+
+```yaml
+  storage:
+    layout:
+      name: direct
+      match:
+        path: /dev/nvme0n1
+```
+
+> ⚠️ **`layout: direct` XOÁ SẠCH ổ đĩa được chọn, không hỏi lại.** Kiểm tra kỹ bằng `lsblk` trước. Ghi sai đường dẫn là mất dữ liệu không cứu được.
 
 ---
 

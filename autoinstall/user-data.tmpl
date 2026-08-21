@@ -15,27 +15,19 @@ autoinstall:
     search_drivers: true
 
   # ---------------------------------------------------------------
-  #  AN TOAN DU LIEU: mac dinh de 2 phan nay CHAY TAY trong trinh cai,
-  #  de ban tu chon o dia va tu dat ten user/mat khau.
-  #  Muon "khong bam gi ca" thi xoa/comment khoi interactive-sections
-  #  ben duoi VA bo comment khoi 'storage:' + 'identity:'.
-  #  CANH BAO: storage layout direct se XOA SACH o dia duoc chon.
+  #  AN TOAN DU LIEU
+  #
+  #  Khoi giua 2 moc IDENTITY ben duoi do ./set-password.sh sinh ra.
+  #  Dung sua tay — chay lai script de doi.
+  #
+  #  'storage' luon o che do chon tay: layout direct se XOA SACH o dia,
+  #  ghi sai duong dan la mat du lieu khong cuu duoc.
   # ---------------------------------------------------------------
+  # >>> IDENTITY >>>
   interactive-sections:
     - storage
     - identity
-
-  # storage:
-  #   layout:
-  #     name: direct
-  #     match:
-  #       path: /dev/nvme0n1     # doi cho dung o dia cua ban!
-  # identity:
-  #   hostname: ubuntu-pc
-  #   realname: Anh
-  #   username: anh
-  #   # tao chuoi hash bang: mkpasswd --method=SHA-512 --rounds=4096
-  #   password: "$6$thay$bang$hash$cua$ban"
+  # <<< IDENTITY <<<
 
   locale: en_US.UTF-8          # doi thanh vi_VN.UTF-8 neu muon giao dien tieng Viet
   timezone: Asia/Ho_Chi_Minh
