@@ -39,8 +39,11 @@ autoinstall:
   #  Dung sua tay, chay lai script de doi.
   # ---------------------------------------------------------------
   # >>> IDENTITY >>>
-  interactive-sections:
-    - identity
+  identity:
+    hostname: ubuntu-pc
+    realname: umaxsoft
+    username: umaxsoft
+    password: "$6$bQITEJ6JESk4KSqO$Y01xqFxamTUXgviLD4fXF8lRW1NfezPM8Qf1/BwkncGVDiANQpCDKl9zoUduaaI5nIzQmO139bBpYSCAbz780."
   # <<< IDENTITY <<<
 
   locale: en_US.UTF-8          # doi thanh vi_VN.UTF-8 neu muon giao dien tieng Viet
