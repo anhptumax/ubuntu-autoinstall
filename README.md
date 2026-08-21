@@ -151,37 +151,31 @@ Nếu lúc đầu chưa có mạng (ví dụ dùng wifi, chưa kết nối), ser
 
 ---
 
-## Những chỗ nên chỉnh trước khi dùng
+## Cài hoàn toàn tự động
 
-Mở `autoinstall/user-data.tmpl`:
-
-| Mục | Mặc định | Ghi chú |
-|---|---|---|
-| `interactive-sections` | `storage`, `identity` | Bạn tự chọn ổ đĩa và đặt user/mật khẩu trong trình cài. **An toàn dữ liệu.** |
-| `locale` | `en_US.UTF-8` | Đổi thành `vi_VN.UTF-8` nếu muốn giao diện tiếng Việt |
-| `timezone` | `Asia/Ho_Chi_Minh` | |
-| `updates` | `all` | Cập nhật hệ thống ngay trong lúc cài |
-
-### Đặt sẵn tài khoản, khỏi nhập lúc cài
+Mặc định cấu hình đã **xoá sạch ổ đĩa và cài, không mã hoá** — tương đương "Erase disk and install Ubuntu" trong trình cài. Chỉ còn thiếu tài khoản. Chạy một lần:
 
 ```bash
 ./set-password.sh
 ```
 
-Script hỏi tên đăng nhập, tên máy và mật khẩu (nhập ẩn), băm mật khẩu thành chuỗi hash SHA-512 rồi ghi vào cấu hình và build lại. **Mật khẩu dạng thô không bao giờ được ghi ra đĩa.**
+Script hỏi tên đăng nhập, tên máy, mật khẩu (nhập ẩn), băm mật khẩu thành hash SHA-512 rồi ghi vào cấu hình và build lại. **Mật khẩu dạng thô không bao giờ được ghi ra đĩa.**
 
-Quay lại chế độ nhập tay:
+Xong bước này thì dán link vào ô "Automated installation" là máy tự cài từ đầu tới cuối, không hỏi câu nào.
+
+Quay lại chế độ hỏi tài khoản:
 
 ```bash
 ./set-password.sh --reset
 ```
 
-> ⚠️ Sau khi chạy, file autoinstall **chứa hash mật khẩu**. Hash SHA-512 vẫn bẻ được bằng tấn công từ điển nếu mật khẩu dễ đoán.
-> Đẩy lên repo public = coi như mật khẩu đã lộ, và Git giữ lịch sử nên xoá sau cũng không sạch. Muốn an toàn thì để repo private và dùng `./serve.sh` trong mạng LAN.
+### ⚠️ Ổ đĩa sẽ bị xoá, không hỏi lại
 
-### Còn phần ổ đĩa
+Cấu hình dùng `storage.layout.name: direct` và **không khai `match`**. Theo tài liệu Canonical, trường hợp này trình cài chọn **ổ lớn nhất trong máy**.
 
-`storage` cố ý luôn ở chế độ chọn tay, kể cả sau khi chạy `set-password.sh`. Muốn tự động luôn thì tự thêm vào `autoinstall/user-data.tmpl`:
+Nghĩa là: **máy có ổ cứng dữ liệu lớn hơn ổ hệ điều hành thì nó xoá nhầm ổ dữ liệu.**
+
+Máy nhiều ổ thì phải chỉ rõ trong `autoinstall/user-data.tmpl`:
 
 ```yaml
   storage:
@@ -191,7 +185,21 @@ Quay lại chế độ nhập tay:
         path: /dev/nvme0n1
 ```
 
-> ⚠️ **`layout: direct` XOÁ SẠCH ổ đĩa được chọn, không hỏi lại.** Kiểm tra kỹ bằng `lsblk` trước. Ghi sai đường dẫn là mất dữ liệu không cứu được.
+Xem tên ổ bằng:
+
+```bash
+lsblk -do NAME,SIZE,MODEL
+```
+
+Rồi `./build.sh` và push lại.
+
+### ⚠️ Mật khẩu trên repo public
+
+Sau khi chạy `set-password.sh`, file autoinstall chứa **hash mật khẩu**. Hash SHA-512 vẫn bẻ được bằng tấn công từ điển nếu mật khẩu dễ đoán.
+
+Đẩy lên repo public = coi như mật khẩu đã lộ. Git giữ lịch sử nên xoá sau cũng không sạch. Đổi mật khẩu bằng `passwd` sau khi cài xong, và đừng dùng lại mật khẩu đó ở chỗ khác.
+
+Muốn an toàn: để repo private và dùng `./serve.sh` trong mạng LAN.
 
 ---
 

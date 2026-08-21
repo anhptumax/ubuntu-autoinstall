@@ -15,23 +15,32 @@ autoinstall:
     search_drivers: true
 
   # ---------------------------------------------------------------
-  #  AN TOAN DU LIEU
+  # ---------------------------------------------------------------
+  #  O DIA — tuong duong "Erase disk and install Ubuntu", khong ma hoa.
   #
-  #  Khoi giua 2 moc IDENTITY ben duoi do ./set-password.sh sinh ra.
-  #  Dung sua tay — chay lai script de doi.
+  #  !!! CANH BAO !!!
+  #  Cai nay XOA SACH o dia va KHONG HOI LAI mot cau nao.
+  #  Khong khai 'match' thi trinh cai chon O LON NHAT trong may.
+  #  May co them o cung du lieu lon hon o he dieu hanh -> no xoa nham o do.
   #
-  #  'storage' luon o che do chon tay: layout direct se XOA SACH o dia,
-  #  ghi sai duong dan la mat du lieu khong cuu duoc.
+  #  May nhieu o dia thi chi ro ra, vd:
+  #    match:
+  #      path: /dev/nvme0n1     # xem bang: lsblk -do NAME,SIZE,MODEL
+  #  hoac uu tien o SSD:
+  #    match:
+  #      ssd: true
+  # ---------------------------------------------------------------
+  storage:
+    layout:
+      name: direct
+
+  # ---------------------------------------------------------------
+  #  TAI KHOAN — khoi giua 2 moc do ./set-password.sh sinh ra.
+  #  Dung sua tay, chay lai script de doi.
   # ---------------------------------------------------------------
   # >>> IDENTITY >>>
   interactive-sections:
-    - storage
-
-  identity:
-    hostname: ubuntu-pc
-    realname: umaxsoft
-    username: umaxsoft
-    password: "$6$AFPjo75iguDWyBR/$wxVK.GHwkJAcXgouXdL4EbU/peWIgDE5DTkfMODH1xhUZVyJTY50COllmefE7j1pUv.kMEGamQM2aCahZAXp.1"
+    - identity
   # <<< IDENTITY <<<
 
   locale: en_US.UTF-8          # doi thanh vi_VN.UTF-8 neu muon giao dien tieng Viet

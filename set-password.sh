@@ -36,12 +36,12 @@ open(path, "w").write(text[:i] + begin + "\n" + body + "\n" + end + text[j:])
 if [[ "${1:-}" == "--reset" ]]; then
   replace_block <<'BLOCK'
   interactive-sections:
-    - storage
     - identity
 BLOCK
   ./build.sh
   echo
-  echo "Da quay ve che do nhap tay. Trinh cai se hoi tai khoan/mat khau nhu binh thuong."
+  echo "Da quay ve che do hoi tai khoan/mat khau trong trinh cai."
+  echo "Luu y: phan o dia VAN tu dong xoa, khong hoi."
   exit 0
 fi
 
@@ -67,9 +67,6 @@ unset PASS1 PASS2
 [[ "${HASH}" == \$6\$* ]] || { echo "Sinh hash that bai." >&2; exit 1; }
 
 replace_block <<BLOCK
-  interactive-sections:
-    - storage
-
   identity:
     hostname: ${HOSTNAME_}
     realname: ${REALNAME}
@@ -83,7 +80,9 @@ cat <<INFO
 
 ======================================================================
   Da dat san tai khoan '${USERNAME}' tren may '${HOSTNAME_}'.
-  Trinh cai chi con hoi phan chon o dia.
+
+  Cai dat gio CHAY HOAN TOAN TU DONG — khong hoi cau nao.
+  O dia se bi XOA SACH ngay khi trinh cai bat dau.
 
   CANH BAO: file autoinstall gio chua HASH mat khau.
   Hash nay be khoa duoc bang tu dien neu mat khau de doan.
