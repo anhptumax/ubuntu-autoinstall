@@ -26,7 +26,12 @@ autoinstall:
   # >>> IDENTITY >>>
   interactive-sections:
     - storage
-    - identity
+
+  identity:
+    hostname: ubuntu-pc
+    realname: umaxsoft
+    username: umaxsoft
+    password: "$6$AFPjo75iguDWyBR/$wxVK.GHwkJAcXgouXdL4EbU/peWIgDE5DTkfMODH1xhUZVyJTY50COllmefE7j1pUv.kMEGamQM2aCahZAXp.1"
   # <<< IDENTITY <<<
 
   locale: en_US.UTF-8          # doi thanh vi_VN.UTF-8 neu muon giao dien tieng Viet
