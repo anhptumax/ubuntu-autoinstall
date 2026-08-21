@@ -1,0 +1,487 @@
+#!/usr/bin/env bash
+#
+# Cai dat phan mem can thiet cho Ubuntu Desktop (amd64).
+#   - Google Chrome        (repo chinh chu cua Google)
+#   - VLC                  (apt)
+#   - LibreOffice          (apt, kem goi ngon ngu tieng Viet)
+#   - Codec da phuong tien (ubuntu-restricted-extras + gstreamer + libavcodec-extra)
+#   - Discord              (.deb chinh chu, fallback snap)
+#   - Telegram Desktop     (snap chinh chu cua Telegram FZ-LLC, fallback flatpak)
+#   - ibus-bamboo          (bo go tieng Viet, PPA chinh chu; tu lui ve ban Ubuntu cu
+#                           neu PPA chua build cho ban hien tai)
+#   - LocalSend            (.deb tu GitHub Releases, fallback flatpak/snap)
+#   - RustDesk             (.deb tu GitHub Releases)
+#
+# Script idempotent: chay lai nhieu lan khong loi, cai gi co roi thi bo qua.
+# Chay tay:  sudo ./post-install.sh
+#
+set -Eeuo pipefail
+
+readonly LOG_FILE="/var/log/ubuntu-post-install.log"
+readonly DONE_MARKER="/var/lib/ubuntu-post-install.done"
+readonly KEYRING_DIR="/etc/apt/keyrings"
+
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+
+# Cho toi da 10 phut neu unattended-upgrades dang giu lock dpkg (rat hay gap o lan boot dau).
+readonly APT_OPTS=(-y -o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
+
+# Goi co san trong kho Ubuntu.
+readonly APT_PACKAGES=(
+  ca-certificates curl wget gpg apt-transport-https
+  vlc
+  libreoffice libreoffice-l10n-vi libreoffice-help-en-us
+  ubuntu-restricted-extras
+  libavcodec-extra
+  gstreamer1.0-libav
+  gstreamer1.0-plugins-good
+  gstreamer1.0-plugins-bad
+  gstreamer1.0-plugins-ugly
+  ibus
+  im-config
+)
+
+FAILED=()
+
+log()  { printf '[%s] %s\n' "$(date '+%F %T')" "$*"; }
+warn() { printf '[%s] CANH BAO: %s\n' "$(date '+%F %T')" "$*" >&2; }
+
+fail_step() {
+  warn "Buoc '$1' that bai — bo qua va di tiep."
+  FAILED+=("$1")
+}
+
+require_root() {
+  if [[ ${EUID} -ne 0 ]]; then
+    echo "Script nay can quyen root. Chay lai: sudo $0" >&2
+    exit 1
+  fi
+}
+
+setup_logging() {
+  touch "${LOG_FILE}" 2>/dev/null || true
+  exec > >(tee -a "${LOG_FILE}") 2>&1
+}
+
+have_pkg()  { dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'ok installed'; }
+have_snap() { command -v snap >/dev/null 2>&1 && snap list "$1" >/dev/null 2>&1; }
+
+# Goi co ton tai trong kho apt hien tai khong?
+have_pkg_candidate() {
+  local c
+  c="$(apt-cache policy "$1" 2>/dev/null | awk '/Candidate:/ {print $2}')"
+  [[ -n "${c}" && "${c}" != "(none)" ]]
+}
+
+wait_for_network() {
+  log "Kiem tra ket noi mang..."
+  local i
+  for i in {1..30}; do
+    if getent hosts archive.ubuntu.com >/dev/null 2>&1 || getent hosts dl.google.com >/dev/null 2>&1; then
+      log "Mang OK."
+      return 0
+    fi
+    sleep 5
+  done
+  warn "Khong thay ket noi mang sau 150 giay."
+  return 1
+}
+
+apt_update() {
+  local i
+  for i in 1 2 3; do
+    if apt-get "${APT_OPTS[@]}" update; then
+      return 0
+    fi
+    warn "apt-get update that bai (lan $i), thu lai sau 15 giay..."
+    sleep 15
+  done
+  return 1
+}
+
+# ttf-mscorefonts-installer (trong ubuntu-restricted-extras) hoi EULA -> tra loi truoc cho khoi treo.
+accept_eulas() {
+  echo 'ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true' | debconf-set-selections
+}
+
+install_apt_packages() {
+  log "Cai cac goi tu kho Ubuntu..."
+  local pending=()
+  local pkg
+  for pkg in "${APT_PACKAGES[@]}"; do
+    have_pkg "${pkg}" || pending+=("${pkg}")
+  done
+
+  if [[ ${#pending[@]} -eq 0 ]]; then
+    log "Tat ca goi apt da co san."
+    return 0
+  fi
+
+  log "Se cai: ${pending[*]}"
+  # Cai ca cum truoc; neu 1 goi loi (doi ten/khong con trong kho) thi cai lai tung goi.
+  if apt-get "${APT_OPTS[@]}" install "${pending[@]}"; then
+    return 0
+  fi
+
+  warn "Cai theo cum that bai, chuyen sang cai tung goi mot."
+  for pkg in "${pending[@]}"; do
+    apt-get "${APT_OPTS[@]}" install "${pkg}" || fail_step "apt:${pkg}"
+  done
+  # Tung goi loi da duoc ghi nhan o tren, khong bao loi lan hai o main.
+  return 0
+}
+
+install_chrome() {
+  if have_pkg google-chrome-stable; then
+    log "Google Chrome da duoc cai."
+    return 0
+  fi
+  if [[ "$(dpkg --print-architecture)" != "amd64" ]]; then
+    warn "Google Chrome chi ho tro amd64 — bo qua."
+    return 0
+  fi
+
+  log "Them kho Google Chrome va cai dat..."
+  install -d -m 0755 "${KEYRING_DIR}"
+  curl -fsSL --retry 3 --retry-delay 5 https://dl.google.com/linux/linux_signing_key.pub \
+    | gpg --dearmor --yes -o "${KEYRING_DIR}/google-chrome.gpg"
+  chmod 0644 "${KEYRING_DIR}/google-chrome.gpg"
+
+  cat > /etc/apt/sources.list.d/google-chrome.sources <<'SOURCES'
+Types: deb
+URIs: https://dl.google.com/linux/chrome/deb/
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/google-chrome.gpg
+SOURCES
+
+  # Ngan postinst cua Chrome tu them mot ban ghi kho thu hai (gay canh bao trung lap).
+  cat > /etc/default/google-chrome <<'DEFAULTS'
+repo_add_once=false
+repo_reenable_on_distupgrade=true
+DEFAULTS
+
+  apt-get "${APT_OPTS[@]}" update
+  apt-get "${APT_OPTS[@]}" install google-chrome-stable
+
+  # Neu Chrome van tu tao file .list thi bo file .sources cua minh di cho khoi trung.
+  if [[ -f /etc/apt/sources.list.d/google-chrome.list ]]; then
+    rm -f /etc/apt/sources.list.d/google-chrome.sources
+  fi
+}
+
+install_discord() {
+  if have_pkg discord || have_snap discord; then
+    log "Discord da duoc cai."
+    return 0
+  fi
+
+  log "Tai va cai Discord (.deb chinh chu)..."
+  local tmp
+  tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '${tmp}'" RETURN
+
+  if curl -fsSL --retry 3 --retry-delay 5 \
+       -o "${tmp}/discord.deb" \
+       "https://discord.com/api/download?platform=linux&format=deb" \
+     && apt-get "${APT_OPTS[@]}" install "${tmp}/discord.deb"; then
+    return 0
+  fi
+
+  warn "Cai .deb that bai, thu qua snap..."
+  command -v snap >/dev/null 2>&1 && snap install discord
+}
+
+# Ubuntu 26.04 khong con goi telegram-desktop trong kho apt.
+# Snap "telegram-desktop" do chinh Telegram FZ-LLC phat hanh.
+install_telegram() {
+  if have_pkg telegram-desktop || have_snap telegram-desktop; then
+    log "Telegram Desktop da duoc cai."
+    return 0
+  fi
+
+  log "Cai Telegram Desktop..."
+  if have_pkg_candidate telegram-desktop && apt-get "${APT_OPTS[@]}" install telegram-desktop; then
+    return 0
+  fi
+  if command -v snap >/dev/null 2>&1 && snap install telegram-desktop; then
+    return 0
+  fi
+
+  warn "Snap that bai, thu qua flatpak..."
+  command -v flatpak >/dev/null 2>&1 \
+    && flatpak install -y --noninteractive flathub org.telegram.desktop
+}
+
+
+# github_latest_deb_url <owner/repo> <regex loc ten file>
+# In ra URL .deb moi nhat khop regex, rong neu khong co.
+#
+# Quet 20 release gan nhat thay vi /releases/latest, vi:
+#   - LocalSend co release chi chua ban Android (khong co .deb),
+#   - RustDesk co release "nightly" luon dung dau danh sach.
+# Vi vay phai bo qua prerelease/draft roi lay ban on dinh moi nhat co .deb.
+github_latest_deb_url() {
+  local repo="$1" pattern="$2" json
+  json="$(curl -fsSL --retry 3 --retry-delay 5 --max-time 60 \
+               -H 'Accept: application/vnd.github+json' \
+               "https://api.github.com/repos/${repo}/releases?per_page=20" 2>/dev/null)" || return 1
+  [[ -n "${json}" ]] || return 1
+
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s' "${json}" | python3 -c '
+import json, re, sys
+pattern = re.compile(sys.argv[1])
+try:
+    releases = json.load(sys.stdin)
+except ValueError:
+    sys.exit(1)
+for release in releases:
+    if release.get("prerelease") or release.get("draft"):
+        continue
+    for asset in release.get("assets", []):
+        name = asset.get("name", "")
+        if name.endswith(".deb") and pattern.search(name):
+            print(asset["browser_download_url"])
+            sys.exit(0)
+' "${pattern}"
+    return 0
+  fi
+
+  # Khong co python3: loc tho, it nhat bo duoc kenh nightly.
+  printf '%s' "${json}" \
+    | grep -oE '"browser_download_url": *"[^"]+\.deb"' \
+    | sed -E 's/.*"(https[^"]+)"/\1/' \
+    | grep -v '/nightly/' \
+    | grep -E "${pattern}" \
+    | head -n1
+}
+
+# https://github.com/BambooEngine/ibus-bamboo
+# Kenh phan phoi chinh thuc la PPA (GitHub Releases khong dinh kem file .deb).
+# Dung de kiem tra PPA da co ban build cho ban Ubuntu nay chua.
+readonly BAMBOO_PPA_BASE="https://ppa.launchpadcontent.net/bamboo-engine/ibus-bamboo/ubuntu"
+# Cac ban Ubuntu de quay ve neu PPA chua build cho ban hien tai (moi -> cu).
+readonly BAMBOO_FALLBACK_SERIES=(plucky noble jammy)
+
+install_ibus_bamboo() {
+  if have_pkg ibus-bamboo; then
+    log "ibus-bamboo da duoc cai."
+    configure_ibus_bamboo
+    return 0
+  fi
+
+  local series
+  series="$(lsb_release -cs 2>/dev/null || echo '')"
+
+  if [[ -n "${series}" ]] && ! ppa_has_series "${series}"; then
+    warn "PPA chua co ban build cho '${series}', tim ban Ubuntu cu hon..."
+    local candidate
+    series=""
+    for candidate in "${BAMBOO_FALLBACK_SERIES[@]}"; do
+      if ppa_has_series "${candidate}"; then
+        series="${candidate}"
+        log "Dung goi cua ban '${series}'."
+        break
+      fi
+    done
+    if [[ -z "${series}" ]]; then
+      warn "Khong tim thay ban build nao tren PPA. Cai thu cong theo huong dan:"
+      warn "  https://github.com/BambooEngine/ibus-bamboo"
+      return 1
+    fi
+  fi
+
+  log "Them PPA bamboo-engine (${series}) va cai ibus-bamboo..."
+  # De add-apt-repository tu tai va cai khoa ky cua PPA (dung cach chuan cua Launchpad).
+  add-apt-repository -y --no-update ppa:bamboo-engine/ibus-bamboo
+
+  # Neu phai lui ve ban Ubuntu cu hon thi doi ten suite trong file sources vua tao.
+  local current
+  current="$(lsb_release -cs 2>/dev/null || echo '')"
+  if [[ -n "${series}" && -n "${current}" && "${series}" != "${current}" ]]; then
+    sed -i "s/\b${current}\b/${series}/g" \
+      /etc/apt/sources.list.d/*bamboo-engine* 2>/dev/null || true
+  fi
+
+  apt-get "${APT_OPTS[@]}" update
+  apt-get "${APT_OPTS[@]}" install ibus-bamboo
+  configure_ibus_bamboo
+}
+
+# PPA co thu muc cho ban Ubuntu nay khong?
+ppa_has_series() {
+  curl -fsSL --head --max-time 20 -o /dev/null \
+       "${BAMBOO_PPA_BASE}/dists/$1/Release" 2>/dev/null
+}
+
+# Dat ibus lam input method framework va them Bamboo vao danh sach nguon nhap mac dinh
+# cho moi user (dung dconf system database, user van doi lai duoc trong Settings).
+configure_ibus_bamboo() {
+  command -v im-config >/dev/null 2>&1 && im-config -n ibus || true
+
+  install -d -m 0755 /etc/dconf/profile /etc/dconf/db/local.d
+  [[ -f /etc/dconf/profile/user ]] || printf 'user-db:user\nsystem-db:local\n' > /etc/dconf/profile/user
+
+  cat > /etc/dconf/db/local.d/00-input-sources <<'DCONF'
+[org/gnome/desktop/input-sources]
+sources=[('xkb', 'us'), ('ibus', 'Bamboo')]
+per-window=false
+DCONF
+
+  command -v dconf >/dev/null 2>&1 && dconf update || true
+  log "Da dat ibus + Bamboo lam nguon nhap mac dinh (co hieu luc sau khi dang xuat/dang nhap lai)."
+}
+
+# https://localsend.org  |  https://github.com/localsend/localsend
+install_localsend() {
+  if have_pkg localsend || have_snap localsend; then
+    log "LocalSend da duoc cai."
+    open_localsend_firewall
+    return 0
+  fi
+
+  log "Cai LocalSend tu GitHub Releases..."
+  local tmp url arch pattern
+  tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '${tmp}'" RETURN
+
+  arch="$(dpkg --print-architecture)"
+  # Ten file phat hanh: LocalSend-<ver>-linux-x86-64.deb / LocalSend-<ver>-linux-arm-64.deb
+  case "${arch}" in
+    amd64) pattern='(x86[-_]?64|amd64)\.deb$' ;;
+    arm64) pattern='(arm[-_]?64|aarch64)\.deb$' ;;
+    *)     pattern="${arch}\.deb$" ;;
+  esac
+
+  url="$(github_latest_deb_url localsend/localsend "${pattern}")"
+
+  if [[ -n "${url}" ]]; then
+    log "Tai ${url}"
+    if curl -fsSL --retry 3 -o "${tmp}/localsend.deb" "${url}" \
+       && apt-get "${APT_OPTS[@]}" install "${tmp}/localsend.deb"; then
+      open_localsend_firewall
+      return 0
+    fi
+  fi
+
+  warn "Khong cai duoc .deb, thu qua flatpak/snap..."
+  if command -v flatpak >/dev/null 2>&1 \
+     && flatpak install -y --noninteractive flathub org.localsend.localsend_app; then
+    open_localsend_firewall
+    return 0
+  fi
+  if command -v snap >/dev/null 2>&1 && snap install localsend; then
+    open_localsend_firewall
+    return 0
+  fi
+  return 1
+}
+
+# LocalSend can mo cong 53317 (TCP+UDP) de tim thiet bi trong mang LAN.
+open_localsend_firewall() {
+  command -v ufw >/dev/null 2>&1 || return 0
+  ufw status 2>/dev/null | grep -qi '^Status: active' || return 0
+  ufw allow 53317/tcp comment 'LocalSend' >/dev/null 2>&1 || true
+  ufw allow 53317/udp comment 'LocalSend' >/dev/null 2>&1 || true
+  log "Da mo cong 53317 tren ufw cho LocalSend."
+}
+
+# https://github.com/rustdesk/rustdesk/releases/latest
+install_rustdesk() {
+  if have_pkg rustdesk; then
+    log "RustDesk da duoc cai."
+    return 0
+  fi
+
+  log "Cai RustDesk tu GitHub Releases..."
+  local tmp url arch pattern
+  tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '${tmp}'" RETURN
+
+  arch="$(dpkg --print-architecture)"
+  case "${arch}" in
+    amd64) pattern='(x86[-_]64|amd64)\.deb$' ;;
+    arm64) pattern='(aarch64|arm64)\.deb$' ;;
+    *)     pattern="${arch}\.deb$" ;;
+  esac
+
+  url="$(github_latest_deb_url rustdesk/rustdesk "${pattern}")"
+  if [[ -z "${url}" ]]; then
+    warn "Khong tim thay file .deb RustDesk phu hop cho kien truc ${arch}."
+    return 1
+  fi
+
+  log "Tai ${url}"
+  curl -fsSL --retry 3 --retry-delay 5 -o "${tmp}/rustdesk.deb" "${url}"
+  apt-get "${APT_OPTS[@]}" install "${tmp}/rustdesk.deb"
+}
+
+cleanup() {
+  log "Don dep goi thua..."
+  apt-get "${APT_OPTS[@]}" autoremove || true
+  apt-get clean || true
+}
+
+summary() {
+  echo
+  log "===== KET QUA ====="
+  local pkg
+  for pkg in google-chrome-stable vlc libreoffice discord telegram-desktop ubuntu-restricted-extras ibus-bamboo localsend rustdesk; do
+    if have_pkg "${pkg}" || have_snap "${pkg}"; then
+      printf '  [OK]     %s\n' "${pkg}"
+    else
+      printf '  [THIEU]  %s\n' "${pkg}"
+    fi
+  done
+
+  if [[ ${#FAILED[@]} -gt 0 ]]; then
+    echo
+    warn "Cac buoc that bai: ${FAILED[*]}"
+    log "Xem log day du tai ${LOG_FILE}"
+    return 1
+  fi
+
+  log "Hoan tat. Log day du: ${LOG_FILE}"
+}
+
+main() {
+  require_root
+  setup_logging
+
+  log "===== Bat dau cai dat phan mem ====="
+
+  wait_for_network || fail_step "network"
+
+  accept_eulas || true
+  apt_update       || fail_step "apt-update"
+
+  install_apt_packages    || fail_step "apt-packages"
+  install_telegram        || fail_step "telegram"
+  install_chrome          || fail_step "chrome"
+  install_discord         || fail_step "discord"
+  install_ibus_bamboo     || fail_step "ibus-bamboo"
+  install_localsend       || fail_step "localsend"
+  install_rustdesk        || fail_step "rustdesk"
+
+  cleanup
+
+  if summary; then
+    install -d -m 0755 "$(dirname "${DONE_MARKER}")"
+    date -Is > "${DONE_MARKER}"
+    exit 0
+  fi
+
+  # Con buoc loi -> tra ve loi de systemd tu chay lai (vd. luc dau chua co wifi).
+  exit 1
+}
+
+# Chi chay khi goi truc tiep — de co the "source" file nay ma test tung ham.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

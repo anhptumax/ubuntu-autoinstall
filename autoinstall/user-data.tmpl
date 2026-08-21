@@ -1,0 +1,99 @@
+#cloud-config
+# =====================================================================
+#  Autoinstall cho Ubuntu Desktop 26.04 LTS (amd64)
+#
+#  KHONG SUA FILE autoinstall/user-data TRUC TIEP.
+#  Sua file nay (user-data.tmpl) hoac scripts/post-install.sh,
+#  roi chay ./build.sh de sinh lai autoinstall/user-data.
+# =====================================================================
+autoinstall:
+  version: 1
+
+  source:
+    id: ubuntu-desktop
+    # true = cai luon driver bo sung (NVIDIA, wifi...) neu may can
+    search_drivers: true
+
+  # ---------------------------------------------------------------
+  #  AN TOAN DU LIEU: mac dinh de 2 phan nay CHAY TAY trong trinh cai,
+  #  de ban tu chon o dia va tu dat ten user/mat khau.
+  #  Muon "khong bam gi ca" thi xoa/comment khoi interactive-sections
+  #  ben duoi VA bo comment khoi 'storage:' + 'identity:'.
+  #  CANH BAO: storage layout direct se XOA SACH o dia duoc chon.
+  # ---------------------------------------------------------------
+  interactive-sections:
+    - storage
+    - identity
+
+  # storage:
+  #   layout:
+  #     name: direct
+  #     match:
+  #       path: /dev/nvme0n1     # doi cho dung o dia cua ban!
+  # identity:
+  #   hostname: ubuntu-pc
+  #   realname: Anh
+  #   username: anh
+  #   # tao chuoi hash bang: mkpasswd --method=SHA-512 --rounds=4096
+  #   password: "$6$thay$bang$hash$cua$ban"
+
+  locale: en_US.UTF-8          # doi thanh vi_VN.UTF-8 neu muon giao dien tieng Viet
+  timezone: Asia/Ho_Chi_Minh
+  keyboard:
+    layout: us
+
+  # Trinh cai tu cai codec + driver doc quyen (tuong duong 2 o tick trong wizard)
+  codecs:
+    install: true
+  drivers:
+    install: true
+
+  # Cap nhat trinh cai truoc khi chay cho on dinh
+  refresh-installer:
+    update: true
+
+  # Cap nhat he thong trong luc cai
+  updates: all
+
+  shutdown: reboot
+
+  # ---------------------------------------------------------------
+  #  Ghi script cai phan mem + service chay o lan boot dau tien.
+  #  Chay o lan boot dau (khong phai trong trinh cai) de chac chan
+  #  co mang — ke ca khi may dung wifi va ban moi ket noi sau khi
+  #  dang nhap. Service se tu chay lai neu that bai.
+  # ---------------------------------------------------------------
+  late-commands:
+    - |
+      set -eu
+      install -d -m 0755 /target/usr/local/sbin
+      cat > /target/usr/local/sbin/ubuntu-post-install.sh <<'POST_INSTALL_SCRIPT_EOF'
+@@POST_INSTALL_SCRIPT@@
+      POST_INSTALL_SCRIPT_EOF
+      chmod 0755 /target/usr/local/sbin/ubuntu-post-install.sh
+
+      cat > /target/etc/systemd/system/ubuntu-post-install.service <<'UNIT_EOF'
+      [Unit]
+      Description=Cai dat phan mem can thiet o lan boot dau tien
+      Wants=network-online.target
+      After=network-online.target snapd.service
+      ConditionPathExists=!/var/lib/ubuntu-post-install.done
+      # Khong gioi han so lan thu lai
+      StartLimitIntervalSec=0
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/sbin/ubuntu-post-install.sh
+      TimeoutStartSec=3600
+      # Chua co mang (vd. wifi chua ket noi) -> cho 3 phut roi thu lai
+      Restart=on-failure
+      RestartSec=180
+      StandardOutput=journal
+      StandardError=journal
+
+      [Install]
+      WantedBy=multi-user.target
+      UNIT_EOF
+
+      curtin in-target --target=/target -- systemctl enable ubuntu-post-install.service
