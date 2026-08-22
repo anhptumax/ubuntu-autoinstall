@@ -1,0 +1,1 @@
+curl -fsSLO https://raw.githubusercontent.com/anhptumax/ubuntu-autoinstall/main/install-apps.sh && chmod +x install-apps.sh && sudo ./install-apps.sh
