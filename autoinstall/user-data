@@ -102,9 +102,11 @@ autoinstall:
       # Cho toi da 10 phut neu unattended-upgrades dang giu lock dpkg (rat hay gap o lan boot dau).
       readonly APT_OPTS=(-y -o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 
-      # Goi co san trong kho Ubuntu.
+      # Goi nen tang — luon cai truoc vi cac buoc khac can den.
+      readonly PREREQ_PACKAGES=(ca-certificates curl wget gpg apt-transport-https)
+
+      # Ung dung + codec lay tu kho Ubuntu.
       readonly APT_PACKAGES=(
-        ca-certificates curl wget gpg apt-transport-https
         vlc
         libreoffice libreoffice-l10n-vi libreoffice-help-en-us
         ubuntu-restricted-extras
@@ -180,16 +182,18 @@ autoinstall:
         echo 'ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true' | debconf-set-selections
       }
 
+      # install_apt_packages <ten buoc> <goi...>
       install_apt_packages() {
-        log "Cai cac goi tu kho Ubuntu..."
+        local label="$1"; shift
+        log "Cai ${label} tu kho Ubuntu..."
         local pending=()
         local pkg
-        for pkg in "${APT_PACKAGES[@]}"; do
+        for pkg in "$@"; do
           have_pkg "${pkg}" || pending+=("${pkg}")
         done
 
         if [[ ${#pending[@]} -eq 0 ]]; then
-          log "Tat ca goi apt da co san."
+          log "${label}: da co san het."
           return 0
         fi
 
@@ -525,24 +529,95 @@ autoinstall:
         log "Hoan tat. Log day du: ${LOG_FILE}"
       }
 
+      # Ten buoc -> ham cai. Thu tu o day la thu tu chay.
+      readonly ALL_STEPS=(apt chrome telegram discord ibus-bamboo localsend rustdesk)
+
+      step_description() {
+        case "$1" in
+          apt)         echo "VLC, LibreOffice, codec da phuong tien, ibus" ;;
+          chrome)      echo "Google Chrome" ;;
+          telegram)    echo "Telegram Desktop" ;;
+          discord)     echo "Discord" ;;
+          ibus-bamboo) echo "Bo go tieng Viet ibus-bamboo" ;;
+          localsend)   echo "LocalSend" ;;
+          rustdesk)    echo "RustDesk" ;;
+        esac
+      }
+
+      run_step() {
+        case "$1" in
+          apt)         install_apt_packages "ung dung + codec" "${APT_PACKAGES[@]}" ;;
+          chrome)      install_chrome ;;
+          telegram)    install_telegram ;;
+          discord)     install_discord ;;
+          ibus-bamboo) install_ibus_bamboo ;;
+          localsend)   install_localsend ;;
+          rustdesk)    install_rustdesk ;;
+          *)           warn "Khong biet buoc '$1'"; return 1 ;;
+        esac
+      }
+
+      usage() {
+        cat <<USAGE
+      Cai cac phan mem can thiet cho Ubuntu Desktop.
+
+        sudo ./install-apps.sh                 # cai tat ca
+        sudo ./install-apps.sh chrome rustdesk # chi cai vai thu
+        ./install-apps.sh --list               # xem danh sach
+        ./install-apps.sh --help
+
+      Chay lai bao nhieu lan cung duoc: cai gi co roi thi bo qua.
+      Log day du: ${LOG_FILE}
+
+      Cac buoc:
+      USAGE
+        local step
+        for step in "${ALL_STEPS[@]}"; do
+          printf '  %-12s %s\n' "${step}" "$(step_description "${step}")"
+        done
+      }
+
       main() {
+        local steps=()
+
+        case "${1:-}" in
+          -h|--help)  usage; exit 0 ;;
+          -l|--list)  usage; exit 0 ;;
+        esac
+
+        if [[ $# -gt 0 ]]; then
+          local arg found step
+          for arg in "$@"; do
+            found=0
+            for step in "${ALL_STEPS[@]}"; do
+              [[ "${arg}" == "${step}" ]] && found=1 && break
+            done
+            if [[ ${found} -eq 0 ]]; then
+              echo "Khong biet buoc '${arg}'. Xem: $0 --list" >&2
+              exit 1
+            fi
+            steps+=("${arg}")
+          done
+        else
+          steps=("${ALL_STEPS[@]}")
+        fi
+
         require_root
         setup_logging
 
-        log "===== Bat dau cai dat phan mem ====="
+        log "===== Bat dau cai: ${steps[*]} ====="
 
         wait_for_network || fail_step "network"
 
         accept_eulas || true
-        apt_update       || fail_step "apt-update"
+        apt_update   || fail_step "apt-update"
 
-        install_apt_packages    || fail_step "apt-packages"
-        install_telegram        || fail_step "telegram"
-        install_chrome          || fail_step "chrome"
-        install_discord         || fail_step "discord"
-        install_ibus_bamboo     || fail_step "ibus-bamboo"
-        install_localsend       || fail_step "localsend"
-        install_rustdesk        || fail_step "rustdesk"
+        install_apt_packages "goi nen tang" "${PREREQ_PACKAGES[@]}" || fail_step "prereq"
+
+        local step
+        for step in "${steps[@]}"; do
+          run_step "${step}" || fail_step "${step}"
+        done
 
         cleanup
 
@@ -551,8 +626,6 @@ autoinstall:
           date -Is > "${DONE_MARKER}"
           exit 0
         fi
-
-        # Con buoc loi -> tra ve loi de systemd tu chay lai (vd. luc dau chua co wifi).
         exit 1
       }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Sinh autoinstall/user-data tu autoinstall/user-data.tmpl + scripts/post-install.sh.
+# Sinh autoinstall/user-data tu autoinstall/user-data.tmpl + install-apps.sh.
 # Chay lai moi khi sua 1 trong 2 file nguon do.
 #
 set -Eeuo pipefail
@@ -8,7 +8,7 @@ set -Eeuo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
 TEMPLATE="autoinstall/user-data.tmpl"
-SCRIPT="scripts/post-install.sh"
+SCRIPT="install-apps.sh"
 OUTPUT="autoinstall/user-data"
 
 for f in "${TEMPLATE}" "${SCRIPT}"; do
