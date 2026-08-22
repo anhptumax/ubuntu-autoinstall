@@ -57,10 +57,6 @@ autoinstall:
   drivers:
     install: true
 
-  # Cap nhat trinh cai truoc khi chay cho on dinh
-  refresh-installer:
-    update: true
-
   # Cap nhat he thong trong luc cai
   updates: all
 
@@ -81,6 +77,7 @@ autoinstall:
       POST_INSTALL_SCRIPT_EOF
       chmod 0755 /target/usr/local/sbin/ubuntu-post-install.sh
 
+      install -d -m 0755 /target/etc/systemd/system
       cat > /target/etc/systemd/system/ubuntu-post-install.service <<'UNIT_EOF'
       [Unit]
       Description=Cai dat phan mem can thiet o lan boot dau tien
@@ -105,4 +102,11 @@ autoinstall:
       WantedBy=multi-user.target
       UNIT_EOF
 
-      curtin in-target --target=/target -- systemctl enable ubuntu-post-install.service
+      # KHONG dung 'curtin in-target' o day: tren bo cai Desktop ISO no luon loi.
+      #   https://github.com/canonical/ubuntu-desktop-installer/issues/2401
+      #   https://bugs.launchpad.net/subiquity/+bug/2040654
+      # Tu tao symlink — dung y het viec 'systemctl enable' lam voi
+      # WantedBy=multi-user.target, ma khong can chroot vao he thong dich.
+      mkdir -p /target/etc/systemd/system/multi-user.target.wants
+      ln -sf /etc/systemd/system/ubuntu-post-install.service \
+             /target/etc/systemd/system/multi-user.target.wants/ubuntu-post-install.service
