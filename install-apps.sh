@@ -3,7 +3,6 @@
 # Cai dat phan mem can thiet cho Ubuntu Desktop (amd64).
 #   - Google Chrome        (repo chinh chu cua Google)
 #   - VLC                  (apt)
-#   - LibreOffice          (apt, kem goi ngon ngu tieng Viet)
 #   - Codec da phuong tien (ubuntu-restricted-extras + gstreamer + libavcodec-extra)
 #   - Discord              (.deb chinh chu, fallback snap)
 #   - Telegram Desktop     (snap chinh chu cua Telegram FZ-LLC, fallback flatpak)
@@ -33,7 +32,6 @@ readonly PREREQ_PACKAGES=(ca-certificates curl wget gpg apt-transport-https)
 # Ung dung + codec lay tu kho Ubuntu.
 readonly APT_PACKAGES=(
   vlc
-  libreoffice libreoffice-l10n-vi libreoffice-help-en-us
   ubuntu-restricted-extras
   libavcodec-extra
   gstreamer1.0-libav
@@ -436,7 +434,7 @@ summary() {
   echo
   log "===== KET QUA ====="
   local pkg
-  for pkg in google-chrome-stable vlc libreoffice discord telegram-desktop ubuntu-restricted-extras ibus-bamboo localsend rustdesk; do
+  for pkg in google-chrome-stable vlc discord telegram-desktop ubuntu-restricted-extras ibus-bamboo localsend rustdesk; do
     if have_pkg "${pkg}" || have_snap "${pkg}"; then
       printf '  [OK]     %s\n' "${pkg}"
     else
@@ -459,7 +457,7 @@ readonly ALL_STEPS=(apt chrome telegram discord ibus-bamboo localsend rustdesk)
 
 step_description() {
   case "$1" in
-    apt)         echo "VLC, LibreOffice, codec da phuong tien, ibus" ;;
+    apt)         echo "VLC, codec da phuong tien, ibus" ;;
     chrome)      echo "Google Chrome" ;;
     telegram)    echo "Telegram Desktop" ;;
     discord)     echo "Discord" ;;

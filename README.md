@@ -30,7 +30,6 @@ Chạy lại bao nhiêu lần cũng được — cái gì đã có thì bỏ qua
 |---|---|
 | Google Chrome | Kho apt chính chủ của Google |
 | VLC | Kho Ubuntu |
-| LibreOffice (+ gói tiếng Việt) | Kho Ubuntu |
 | Codec đa phương tiện | `ubuntu-restricted-extras`, `libavcodec-extra`, GStreamer good/bad/ugly/libav |
 | Discord | `.deb` chính chủ, dự phòng snap |
 | Telegram Desktop | Snap của Telegram FZ-LLC |
@@ -57,7 +56,7 @@ sudo ./install-apps.sh chrome rustdesk
 ```
 
 ```
-apt          VLC, LibreOffice, codec đa phương tiện, ibus
+apt          VLC, codec đa phương tiện, ibus
 chrome       Google Chrome
 telegram     Telegram Desktop
 discord      Discord
